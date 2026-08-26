@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "project": "kilix-land-agent",
+  "publication_status": "private-development",
+  "assets": [
+    {
+      "id": "studio-apartment-source",
+      "path": "assets/graphics/rooms/kilix/studio-apartment-source.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "92fb35a9f18432edc6dcc9698bd12002c6050df0b0f109772dbb648c37a9f3bd",
+      "runtime": false
+    },
+    {
+      "id": "studio-apartment",
+      "path": "assets/graphics/rooms/kilix/studio-apartment.png",
+      "width": 1280,
+      "height": 720,
+      "sha256": "ed64787649958eee21bfa7593c93f0176db42e552bb7ecb3c524ad7b8fc66367",
+      "runtime": true
+    },
+    {
+      "id": "kilix-player",
+      "path": "assets/graphics/casts/kilix-player.png",
+      "width": 1024,
+      "height": 512,
+      "columns": 16,
+      "rows": 8,
+      "cell_width": 64,
+      "cell_height": 64,
+      "sha256": "065f71f24064e34abca7d0827abb8f78a5390f5fc1729cfbe6c4d680ea840515",
+      "runtime": true
+    }
+  ]
+}
