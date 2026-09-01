@@ -4,7 +4,7 @@ import json
 import socket
 import unittest
 
-from agent.protocol import ACTION_PROTOCOL, RESULT_PROTOCOL, RoomClient, RoomRuntime
+from kilix_land_agent.protocol import ACTION_PROTOCOL, RESULT_PROTOCOL, RoomClient, RoomRuntime
 
 
 class LiveProtocolTests(unittest.TestCase):

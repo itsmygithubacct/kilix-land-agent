@@ -5,9 +5,9 @@ import io
 import unittest
 from typing import Any
 
-from agent.protocol import RoomClient, RoomRuntime
-from agent.providers import DeterministicProvider, Proposal
-from agent.resident import LocalSpeaker, ResidentError, ResidentLoop
+from kilix_land_agent.protocol import RoomClient, RoomRuntime
+from kilix_land_agent.providers import DeterministicProvider, Proposal
+from kilix_land_agent.resident import LocalSpeaker, ResidentError, ResidentLoop
 
 
 class ScriptedProvider:

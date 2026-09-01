@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Command-line entry point for the Kilix Studio resident."""
 
-from agent.resident import main
+from kilix_land_agent.resident import main
 
 
 if __name__ == "__main__":

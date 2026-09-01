@@ -6,8 +6,8 @@ import subprocess
 import unittest
 from unittest import mock
 
-from agent.providers import OllamaSshProvider, ProviderError
-from agent.resident import LocalSpeaker
+from kilix_land_agent.providers import OllamaSshProvider, ProviderError
+from kilix_land_agent.resident import LocalSpeaker
 
 
 class OllamaProviderTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class OllamaProviderTests(unittest.TestCase):
         )
         provider = OllamaSshProvider(host="approved-test-host",
                                     model="qwen3.5:9b")
-        with mock.patch("agent.providers.subprocess.run", return_value=completed) as run:
+        with mock.patch("kilix_land_agent.providers.subprocess.run", return_value=completed) as run:
             proposal = provider.propose([{"role": "user", "content": "move"}])
         self.assertEqual(proposal.name, "go_to")
         self.assertEqual(proposal.arguments, {"target_id": "bookshelf"})
@@ -58,7 +58,7 @@ class OllamaProviderTests(unittest.TestCase):
             )
             provider = OllamaSshProvider(host="approved-test-host",
                                         model="qwen3.5:9b")
-            with mock.patch("agent.providers.subprocess.run", return_value=completed):
+            with mock.patch("kilix_land_agent.providers.subprocess.run", return_value=completed):
                 with self.assertRaises(ProviderError):
                     provider.propose([])
 
@@ -78,7 +78,7 @@ class LocalSpeakerTests(unittest.TestCase):
         with mock.patch.object(
             speaker, "_trusted_binary", return_value=Path("/fixed/kilix-tts")
         ), mock.patch.object(speaker, "_ensure_daemon"), mock.patch(
-            "agent.resident.subprocess.run", return_value=completed
+            "kilix_land_agent.resident.subprocess.run", return_value=completed
         ) as run:
             speaker.speak("A bounded sentence.")
         self.assertEqual(
@@ -93,7 +93,7 @@ class LocalSpeakerTests(unittest.TestCase):
 
     def test_muted_speech_starts_no_process(self) -> None:
         speaker = LocalSpeaker(enabled=False, model="espeak")
-        with mock.patch("agent.resident.subprocess.run") as run:
+        with mock.patch("kilix_land_agent.resident.subprocess.run") as run:
             speaker.speak("Silence.")
         run.assert_not_called()
 
