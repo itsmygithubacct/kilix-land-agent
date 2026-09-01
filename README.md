@@ -4,9 +4,10 @@ Private, local-first resident-agent development project. Kilix the firekitten
 lives in one studio apartment while the semantic control and safety boundaries
 are proven before integration with the larger Kilix Land world.
 
-This repository is private. It grants no public project or generated-asset
-license, and it must pass the same publication-hygiene gates as a public Kilix
-repository.
+The source of this repository is licensed under the MIT License; see
+[`LICENSE`](LICENSE). Everything under `assets/` is licensed separately under
+CC BY-NC-SA 4.0; see [`assets/LICENSE.md`](assets/LICENSE.md), which also
+records each asset's provenance.
 
 ## Build
 
@@ -175,10 +176,12 @@ Kilix modules provide the terminal session, input, framebuffer, software
 renderer, top-down runtime, assets, state primitive, and PCM support used by the
 room. Build products remain under this repository's ignored `build/` directory.
 
-`assets/graphics/casts/kilix-player.png` remains CC BY-NC-SA 4.0. The generated
-studio plate and the checked demo video remain private development assets with
-their hashes and provenance recorded beside them. Read
-[assets/LICENSE.md](assets/LICENSE.md) before redistributing any asset.
+Every asset under `assets/` is licensed CC BY-NC-SA 4.0, including
+`graphics/casts/kilix-player.png`, the generated studio plate, and the checked
+demo video. Their hashes and provenance are recorded beside them. Read
+[assets/LICENSE.md](assets/LICENSE.md) before redistributing any asset — the
+asset license is NonCommercial and ShareAlike, and does not follow the MIT
+license that covers the source.
 
 Research, threat models, prompts, qualification evidence, and implementation
 records live outside this repository under
