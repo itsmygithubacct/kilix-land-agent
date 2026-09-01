@@ -19,6 +19,7 @@ typedef enum agent_action_kind {
     AGENT_ACTION_INTERACT,
     AGENT_ACTION_FACE_USER,
     AGENT_ACTION_SAY,
+    AGENT_ACTION_STATUS,
     AGENT_ACTION_CANCEL
 } agent_action_kind;
 
@@ -49,6 +50,11 @@ bool agent_protocol_result(char *output, size_t output_size,
 
 bool agent_protocol_generic_error(char *output, size_t output_size,
                                   const char *code, uint64_t revision);
+
+bool agent_protocol_chat_input(char *output, size_t output_size,
+                               const char *session_id,
+                               const char *message_id,
+                               const char *text);
 
 bool agent_protocol_selftest(void);
 

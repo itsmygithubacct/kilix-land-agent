@@ -35,8 +35,20 @@ make test
 The room exposes stable IDs for a computer, desk, kitchenette, TV, radio,
 bookshelf, bed, and plant. Seven targets are inspection-only placeholders. The
 plant alone has an executable capability: it launches the fixed, allowlisted
-`pleb-plant-grower` binary without a shell. There is no arbitrary executable,
-file-editing, shutdown, or power capability.
+`pleb-plant-grower` binary in a separate Kilix tab without a shell. The room
+and chat remain alive in their original tab. Use Ctrl-C to exit the plant app
+cleanly; closing or detaching its brokered tab alone can leave the game process
+running. There is no arbitrary executable, file-editing, shutdown, or power
+capability.
+
+The handoff derives the matching `kitten` client from the owner of the current
+Kilix socket rather than searching `PATH`. Before launch it verifies the
+terminal process and pane identity, remote-control credential, executable
+ownership and modes, link counts, parent directories, and the fixed plant
+binary. It uses Kilix's same-user socket policy first and retries with the
+credential only when the live engine requires password authorization.
+Symlinks, group/world-writable paths, malformed sockets, and untrusted
+credentials fail closed.
 
 ## Live resident mode
 
@@ -57,6 +69,28 @@ Ollama service listens only on its own loopback interface:
   --request "Walk to the bookshelf, inspect it, face me, and tell me what you found."
 ```
 
+For a persistent graphical session with Qwen controlling Kilix and a dialogue
+composer at the bottom of the room, use:
+
+```sh
+./kilix-land-agentd \
+  --provider qwen-ssh \
+  --ssh-host <approved-host> \
+  --model qwen3.5:9b \
+  --chat
+```
+
+The chat composer is focused initially. Type printable text and press Enter to
+send it; Backspace edits it. Tab switches between chat and manual mode. Manual
+mode restores WASD/arrows and Enter/Space interaction, and Tab returns to chat.
+Escape clears a non-empty draft or leaves when the draft is empty; Ctrl-C
+always leaves. The panel shows each validated Qwen action while Kilix moves and
+keeps the most recent user message and Kilix reply visible. Reply text wraps to
+the available viewport. A layered transcript surface prevents room notices or
+the moving character from overprinting long replies, while the composer stays
+visibly translucent. Rendering scales through a bounded 1920x1080 for a
+full-screen Kilix tab.
+
 Both modes execute a real closed loop:
 
 1. obtain the current revision and semantic target catalog;
@@ -70,7 +104,10 @@ The final `say` action is displayed in the room and spoken through `kilix-tts`.
 The default is the registered `piper-en-us-kristin-medium` model. The trusted
 resident starts `kilix-voiced` on demand, passes speech over standard input,
 and never lets a provider choose an executable, model path, URL, or shell text.
-Use `--no-speech` to mute playback or `--headless` for automated qualification.
+If graphical playback fails, the real reply remains visible and the status line
+reports that audio is unavailable. Closing the room also terminates an in-flight
+SSH model request instead of leaving a hidden resident behind. Use `--no-speech`
+to mute playback or `--headless` for automated qualification.
 
 The room and resident share a freshly created Unix `SOCK_SEQPACKET` socketpair.
 Only its inherited descriptor crosses into the room process; there is no named
@@ -81,10 +118,18 @@ stale revisions, extra fields, unknown targets, unavailable actions, oversized
 messages, and expired work fail closed. Manual input cancels agent navigation.
 See [docs/LIVE-PROTOCOL.md](docs/LIVE-PROTOCOL.md).
 
-The current `kilix-land-agentd` implements one user-initiated turn and then
-leaves the graphical room under manual control until it is closed. Persistent
-chat, memory, sandboxed application artifacts, and remote GPT/MiniMax/Kimi
-adapters remain later milestones.
+Qwen also receives two read-only tools for searching and reading bounded help
+excerpts beneath the Kilix tree. The resident selects `~/gpu_terminal` in a
+development checkout or `~/.local/gpu_terminal` in an installed session. Only
+Markdown, text, reStructuredText, README, and HELP documents are indexed;
+absolute paths, traversal, symlink escapes, binary data, oversized files, and
+writes are rejected. Content is returned as untrusted reference data, never as
+instructions.
+
+The one-shot mode leaves the graphical room under manual control after its
+reply. Chat mode serves repeated in-room turns and keeps only a short volatile
+conversation window. Durable memory, the general application permission
+broker, and remote GPT/MiniMax/Kimi adapters remain later milestones.
 
 ## Semantic observation
 
@@ -119,7 +164,9 @@ capability selection, graphics hashes and atlas layout, deterministic rendering,
 strict request parsing, private live transport, revision progression, duplicate
 IDs, stale actions, cancellation, manual override, malformed and oversized
 messages, unknown targets, exact provider tool shapes, unobserved-target
-rejection, bounded speech, and fixed `kilix-tts` invocation without a shell.
+rejection, bounded speech, fixed `kilix-tts` invocation without a shell,
+confined help ranges and paths, and fixed-tab launcher rejection of unsafe
+links and file modes.
 
 ## Dependencies and assets
 

@@ -1,5 +1,6 @@
 #include "agent_protocol.h"
 #include "agent_session.h"
+#include "app_launcher.h"
 #include "graphics.h"
 #include "render.h"
 #include "studio.h"
@@ -13,7 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 typedef struct studio_input {
@@ -223,7 +223,8 @@ static void agent_replay_step(agent_replay *replay, studio_state *state,
     }
 }
 
-static bool poll_input(studio_input *input, bool *quit_requested)
+static bool poll_input(studio_input *input, bool *quit_requested,
+                       agent_session *live_session)
 {
     static const uint32_t directions[] = {
         KITTYKB_KEY_UP, KITTYKB_KEY_DOWN,
@@ -241,19 +242,84 @@ static bool poll_input(studio_input *input, bool *quit_requested)
         return false;
     while (kittyts_next_key_event(&terminal_session, &event)) {
         uint32_t movement_key = normalize_movement_key(event.key);
+        bool pressed = event.action == KITTYKB_ACTION_PRESS;
+        bool repeated = event.action == KITTYKB_ACTION_REPEAT;
+        bool chat_enabled = agent_session_chat_enabled(live_session);
+        bool manual_mode = agent_session_chat_manual_mode(live_session);
+        if (pressed && event_letter(&event, 'c') &&
+            (event.modifiers & KITTYKB_MOD_CTRL) != 0u) {
+            *quit_requested = true;
+            continue;
+        }
+        if (chat_enabled) {
+            if (pressed && event.key == KITTYKB_KEY_TAB) {
+                agent_session_chat_toggle_mode(live_session);
+                last_movement_key = KITTYKB_KEY_NONE;
+                continue;
+            }
+            if (!manual_mode) {
+                size_t text_index;
+                uint32_t forbidden_modifiers =
+                    KITTYKB_MOD_ALT | KITTYKB_MOD_CTRL |
+                    KITTYKB_MOD_SUPER | KITTYKB_MOD_HYPER |
+                    KITTYKB_MOD_META;
+                last_movement_key = KITTYKB_KEY_NONE;
+                if (!pressed && !repeated) continue;
+                if (event.key == KITTYKB_KEY_ESCAPE) {
+                    agent_chat_view view;
+                    agent_session_chat_snapshot(live_session, &view);
+                    if (view.input[0] == '\0') *quit_requested = true;
+                    else agent_session_chat_clear(live_session);
+                    continue;
+                }
+                if (event.key == KITTYKB_KEY_BACKSPACE) {
+                    agent_session_chat_backspace(live_session);
+                    continue;
+                }
+                if (event.key == KITTYKB_KEY_ENTER) {
+                    (void)agent_session_chat_submit(live_session);
+                    continue;
+                }
+                if ((event.modifiers & forbidden_modifiers) != 0u)
+                    continue;
+                if (event.text_length > 0u) {
+                    for (text_index = 0u;
+                         text_index < (size_t)event.text_length;
+                         ++text_index) {
+                        uint32_t character = event.text[text_index];
+                        if (character >= UINT32_C(32) &&
+                            character <= UINT32_C(126))
+                            (void)agent_session_chat_append(
+                                live_session, (unsigned char)character);
+                    }
+                } else {
+                    uint32_t character = event.key;
+                    if ((event.modifiers & KITTYKB_MOD_SHIFT) != 0u &&
+                        event.shifted_key >= UINT32_C(32) &&
+                        event.shifted_key <= UINT32_C(126))
+                        character = event.shifted_key;
+                    if (character >= UINT32_C(32) &&
+                        character <= UINT32_C(126))
+                        (void)agent_session_chat_append(
+                            live_session, (unsigned char)character);
+                }
+                continue;
+            }
+        }
         if (movement_key != KITTYKB_KEY_NONE &&
             event.action != KITTYKB_ACTION_RELEASE)
             last_movement_key = movement_key;
-        if (event.action != KITTYKB_ACTION_PRESS) continue;
-        if ((event_letter(&event, 'c') &&
-             (event.modifiers & KITTYKB_MOD_CTRL) != 0u) ||
-            event_letter(&event, 'q') || event.key == KITTYKB_KEY_ESCAPE) {
+        if (!pressed) continue;
+        if (event_letter(&event, 'q') || event.key == KITTYKB_KEY_ESCAPE) {
             *quit_requested = true;
         } else if (event.key == KITTYKB_KEY_ENTER ||
                    kittykb_event_matches_key(&event, (uint32_t)' ')) {
             input->interact_pressed = true;
         }
     }
+    if (agent_session_chat_enabled(live_session) &&
+        !agent_session_chat_manual_mode(live_session))
+        return true;
     if (last_movement_key != KITTYKB_KEY_NONE &&
         movement_key_down(last_movement_key)) {
         apply_movement_key(input, last_movement_key);
@@ -291,53 +357,6 @@ static const char *project_root(void)
         *slash = '\0';
     }
     return project_root_storage;
-}
-
-static int run_fixed_program(const char *path)
-{
-    pid_t child;
-    pid_t waited;
-    int status;
-    char *const arguments[] = {(char *)"pleb-plant-grower", NULL};
-    if (!path || access(path, X_OK) != 0) return -1;
-    child = fork();
-    if (child < 0) return -1;
-    if (child == 0) {
-        execv(path, arguments);
-        _exit(127);
-    }
-    do {
-        waited = waitpid(child, &status, 0);
-    } while (waited < 0 && errno == EINTR);
-    if (waited < 0) return -1;
-    if (WIFEXITED(status)) return WEXITSTATUS(status);
-    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
-    return -1;
-}
-
-static int launch_plant_simulator(void)
-{
-    static const char *const installed[] = {
-        "/usr/local/bin/pleb-plant-grower",
-        "/usr/bin/pleb-plant-grower"
-    };
-    char sibling[PATH_MAX];
-    int written;
-    int result;
-    size_t index;
-    written = snprintf(sibling, sizeof sibling,
-                       "%s/../../games/pleb-plant-grower/"
-                       "pleb-plant-grower", project_root());
-    if (written >= 0 && (size_t)written < sizeof sibling) {
-        result = run_fixed_program(sibling);
-        if (result >= 0) return result;
-    }
-    for (index = 0u; index < sizeof installed / sizeof installed[0];
-         ++index) {
-        result = run_fixed_program(installed[index]);
-        if (result >= 0) return result;
-    }
-    return -1;
 }
 
 static bool write_ppm(const char *path, const uint8_t *rgba,
@@ -387,8 +406,10 @@ static int selftest(void)
     char error[128];
     size_t index;
     size_t replay_steps;
-    if (!agent_protocol_selftest() || !agent_session_selftest()) {
-        (void)fprintf(stderr, "FAIL agent protocol or session\n");
+    if (!agent_protocol_selftest() || !agent_session_selftest() ||
+        !kilix_app_launcher_selftest()) {
+        (void)fprintf(stderr,
+                      "FAIL agent protocol, session, or app launcher\n");
         return EXIT_FAILURE;
     }
     studio_init(&state);
@@ -459,7 +480,7 @@ static int selftest(void)
     (void)printf(
         "PASS studio-state targets=8 collisions=bounded "
         "agent-replay=validated protocol=fail-closed "
-        "plant=fixed-capability "
+        "plant=fixed-tab-capability "
         "power-actions=absent\n");
     return EXIT_SUCCESS;
 }
@@ -507,6 +528,52 @@ static int render_test(const char *path)
         return EXIT_FAILURE;
     }
     (void)printf("PASS studio-render size=1280x720 output=%s\n", path);
+    return EXIT_SUCCESS;
+}
+
+static int chat_render_test(const char *path)
+{
+    studio_graphics graphics;
+    studio_state state;
+    agent_chat_view chat = {0};
+    ki_td_soft_renderer renderer = {0};
+    char error[160];
+    bool success;
+    if (!studio_graphics_init(&graphics, asset_root(), error,
+                              sizeof error)) {
+        (void)fprintf(stderr, "FAIL graphics: %s\n", error);
+        return EXIT_FAILURE;
+    }
+    studio_init(&state);
+    chat.enabled = true;
+    (void)snprintf(chat.status, sizeof chat.status,
+                   "QWEN READY: TYPE A MESSAGE AND PRESS ENTER");
+    (void)snprintf(chat.user, sizeof chat.user,
+                   "Explain how Kilix uses its help documents safely.");
+    (void)snprintf(
+        chat.reply, sizeof chat.reply,
+        "I can search and read bounded help excerpts from the Kilix tree. "
+        "The resident keeps those documents read-only, confines every path "
+        "beneath the selected root, rejects symlinks and binary data, and "
+        "treats all retrieved content as untrusted reference material. This "
+        "long response also exercises responsive word wrapping without "
+        "drawing beyond the translucent chat panel.");
+    success = ki_td_soft_renderer_init(&renderer, 800, 450) &&
+              studio_render_chat(&renderer, &state, &graphics, &chat) &&
+              ki_td_soft_renderer_resize(&renderer, 960, 540) &&
+              studio_render_chat(&renderer, &state, &graphics, &chat) &&
+              ki_td_soft_renderer_resize(&renderer, 1920, 1080) &&
+              studio_render_chat(&renderer, &state, &graphics, &chat) &&
+              write_ppm(path, renderer.rgba, 1920, 1080);
+    ki_td_soft_renderer_destroy(&renderer);
+    studio_graphics_shutdown(&graphics);
+    if (!success) {
+        (void)fprintf(stderr, "FAIL chat render output=%s\n", path);
+        return EXIT_FAILURE;
+    }
+    (void)printf(
+                 "PASS chat-render size=800x450,960x540,1920x1080 output=%s\n",
+                 path);
     return EXIT_SUCCESS;
 }
 
@@ -687,24 +754,6 @@ static int print_observation(void)
     return EXIT_SUCCESS;
 }
 
-static bool start_terminal(const kittyts_options *options,
-                           ki_td_soft_renderer *renderer)
-{
-    int width;
-    int height;
-    if (kittyts_start(&terminal_session, STDIN_FILENO, STDOUT_FILENO,
-                      options) != 0)
-        return false;
-    width = kittyts_width(&terminal_session);
-    height = kittyts_height(&terminal_session);
-    if (!ki_td_soft_renderer_resize(renderer, width, height)) {
-        kittyts_stop(&terminal_session);
-        return false;
-    }
-    last_movement_key = KITTYKB_KEY_NONE;
-    return true;
-}
-
 static int run_room(const char *controller,
                     const studio_target_info *replay_target,
                     agent_session *live_session)
@@ -742,8 +791,8 @@ static int run_room(const char *controller,
     kittyts_options_init(&terminal_options);
     terminal_options.framebuffer.min_width = 800;
     terminal_options.framebuffer.min_height = 450;
-    terminal_options.framebuffer.max_width = 1280;
-    terminal_options.framebuffer.max_height = 720;
+    terminal_options.framebuffer.max_width = 1920;
+    terminal_options.framebuffer.max_height = 1080;
     if (kittyts_start(&terminal_session, STDIN_FILENO, STDOUT_FILENO,
                       &terminal_options) != 0) {
         (void)fprintf(stderr, "kilix-land-agent: terminal start failed: %s\n",
@@ -777,7 +826,7 @@ static int run_room(const char *controller,
         int resized_width;
         int resized_height;
         int64_t now;
-        if (!poll_input(&current_input, &quit_requested)) {
+        if (!poll_input(&current_input, &quit_requested, live_session)) {
             failed = true;
             break;
         }
@@ -815,25 +864,12 @@ static int run_room(const char *controller,
                         simulation_input.move_y, STUDIO_TICK_SECONDS);
         }
         if (studio_take_plant_launch_request(&state)) {
-            int result;
-            kittyts_stop(&terminal_session);
-            result = launch_plant_simulator();
-            if (!start_terminal(&terminal_options, &renderer)) {
-                failed = true;
-                break;
-            }
-            width = kittyts_width(&terminal_session);
-            height = kittyts_height(&terminal_session);
+            kilix_app_launch_result result =
+                kilix_app_launch_plant(project_root());
             kilix_game_clock_init(&clock, &clock_options);
             pending_interact = false;
             first_frame = true;
-            studio_set_notice(
-                &state,
-                result < 0 ?
-                "Plant simulator is not installed at an allowlisted path." :
-                result == 0 ?
-                "Returned from the plant simulator." :
-                "Plant simulator exited with an error.");
+            studio_set_notice(&state, kilix_app_launch_notice(result));
         }
         if (kittyts_check_resize(&terminal_session, &resized_width,
                                  &resized_height)) {
@@ -849,7 +885,14 @@ static int run_room(const char *controller,
         if (first_frame ||
             state.simulation_tick / UINT64_C(2) !=
             last_presented_step / UINT64_C(2)) {
-            if (!studio_render(&renderer, &state, &graphics) ||
+            agent_chat_view chat_view;
+            bool rendered;
+            agent_session_chat_snapshot(live_session, &chat_view);
+            rendered = chat_view.enabled ?
+                       studio_render_chat(&renderer, &state, &graphics,
+                                          &chat_view) :
+                       studio_render(&renderer, &state, &graphics);
+            if (!rendered ||
                 !kittyts_present(&terminal_session, renderer.rgba,
                                  width, height)) {
                 failed = true;
@@ -935,7 +978,8 @@ static bool parse_agent_fd(const char *text, int *fd)
     return true;
 }
 
-static int run_live_agent_session(const char *fd_text, bool headless)
+static int run_live_agent_session(const char *fd_text, bool headless,
+                                  bool chat)
 {
     agent_session session;
     char error[160];
@@ -949,6 +993,7 @@ static int run_live_agent_session(const char *fd_text, bool headless)
         (void)fprintf(stderr, "kilix-land-agent: %s\n", error);
         return EXIT_FAILURE;
     }
+    if (chat) agent_session_chat_enable(&session);
     result = headless ? run_headless_agent_session(&session) :
                         run_room(NULL, NULL, &session);
     agent_session_close(&session);
@@ -959,11 +1004,12 @@ static void usage(const char *program)
 {
     (void)printf(
         "usage: %s --test-room\n"
-        "       %s --agent-session-fd FD [--headless]\n"
+        "       %s --agent-session-fd FD [--headless | --chat]\n"
         "       %s --agent-replay MODEL TARGET\n"
         "       %s --video-replay MODEL TARGET1 TARGET2 SPEECH\n"
         "       %s --observe\n"
-        "       %s --selftest | --graphics-test | --render-test FILE\n"
+        "       %s --selftest | --graphics-test | --render-test FILE | "
+        "--chat-render-test FILE\n"
         "       %s --version | --help\n",
         program, program, program, program, program, program, program);
 }
@@ -973,10 +1019,13 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--test-room") == 0)
         return run_test_room();
     if (argc == 3 && strcmp(argv[1], "--agent-session-fd") == 0)
-        return run_live_agent_session(argv[2], false);
+        return run_live_agent_session(argv[2], false, false);
     if (argc == 4 && strcmp(argv[1], "--agent-session-fd") == 0 &&
         strcmp(argv[3], "--headless") == 0)
-        return run_live_agent_session(argv[2], true);
+        return run_live_agent_session(argv[2], true, false);
+    if (argc == 4 && strcmp(argv[1], "--agent-session-fd") == 0 &&
+        strcmp(argv[3], "--chat") == 0)
+        return run_live_agent_session(argv[2], false, true);
     if (argc == 4 && strcmp(argv[1], "--agent-replay") == 0)
         return run_agent_replay(argv[2], argv[3]);
     if (argc == 6 && strcmp(argv[1], "--video-replay") == 0)
@@ -989,6 +1038,8 @@ int main(int argc, char **argv)
         return graphics_test();
     if (argc == 3 && strcmp(argv[1], "--render-test") == 0)
         return render_test(argv[2]);
+    if (argc == 3 && strcmp(argv[1], "--chat-render-test") == 0)
+        return chat_render_test(argv[2]);
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         (void)printf("kilix-land-agent 0.1.0-dev\n");
         return EXIT_SUCCESS;

@@ -190,7 +190,7 @@ bool studio_interact(studio_state *state)
     switch (target) {
     case STUDIO_TARGET_COMPUTER:
         copy_notice(state,
-                    "Computer: safe app catalog is not connected yet.");
+                    "Computer: safe app permissions are not connected yet.");
         break;
     case STUDIO_TARGET_DESK:
         copy_notice(state, "Desk: Kilix's workspace is ready.");
@@ -202,17 +202,19 @@ bool studio_interact(studio_state *state)
         copy_notice(state, "TV: media capability is disabled in test mode.");
         break;
     case STUDIO_TARGET_RADIO:
-        copy_notice(state, "Radio: audio capability is disabled in test mode.");
+        copy_notice(state,
+                    "Radio: resident speech is connected; media controls are not.");
         break;
     case STUDIO_TARGET_BOOKSHELF:
-        copy_notice(state, "Bookshelf: local reading index is not connected.");
+        copy_notice(state,
+                    "Bookshelf: Qwen can search the read-only Kilix help library.");
         break;
     case STUDIO_TARGET_BED:
         copy_notice(state, "Bed: rest is cosmetic; power actions do not exist.");
         break;
     case STUDIO_TARGET_PLANT:
         copy_notice(state,
-                    "Plant: opening the allowlisted plant simulator...");
+                    "Plant: requesting its fixed app in a separate Kilix tab...");
         state->plant_launch_requested = true;
         break;
     case STUDIO_TARGET_NONE:

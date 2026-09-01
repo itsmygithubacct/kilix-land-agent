@@ -45,6 +45,11 @@ class LiveProtocolTests(unittest.TestCase):
         observation = client.observe()
         self.assertEqual(observation["revision"], 0)
         self.assertEqual(len(observation["entities"]), 8)
+        self.assertNotIn("status", observation["available_actions"])
+
+        status = client.action("status", text="QWEN ACTION: search_help()")
+        self.assertEqual(status["status"], "ok")
+        self.assertEqual(status["revision"], observation["revision"])
 
         arrived = client.action("go_to", target_id="bookshelf")
         self.assertEqual(arrived["status"], "ok")

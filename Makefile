@@ -25,6 +25,7 @@ LDLIBS := $(KILIX_ASSETS_LDLIBS) $(KILIX_GAME_KIT_LDLIBS)
 
 BIN := kilix-land-agent
 SRC := src/main.c src/studio.c src/graphics.c src/render.c \
+	src/app_launcher.c \
 	src/agent_protocol.c src/agent_session.c
 OBJ := $(patsubst src/%.c,build/%.o,$(SRC))
 DEPS := $(OBJ:.o=.d)
@@ -39,7 +40,7 @@ $(BIN): $(OBJ) $(KILIX_ASSETS_LIB) $(KILIX_TD_LIBS) \
 		$(KILIX_TD_LIBS) $(KILIX_GAME_KIT_LIB) $(LDLIBS)
 
 build/%.o: src/%.c src/studio.h src/graphics.h src/render.h \
-	src/agent_protocol.h src/agent_session.h | build
+	src/app_launcher.h src/agent_protocol.h src/agent_session.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 build:
@@ -56,6 +57,7 @@ test: $(BIN)
 	python3 tools/qwen_video_demo.py --help >/dev/null
 	python3 -m unittest discover -s tests -v
 	./$(BIN) --render-test build/studio-room.ppm
+	./$(BIN) --chat-render-test build/studio-chat.ppm
 
 clean:
 	$(RM) -r build $(BIN)

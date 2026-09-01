@@ -159,6 +159,7 @@ static agent_action_kind action_for_name(const char *name)
     if (strcmp(name, "interact") == 0) return AGENT_ACTION_INTERACT;
     if (strcmp(name, "face_user") == 0) return AGENT_ACTION_FACE_USER;
     if (strcmp(name, "say") == 0) return AGENT_ACTION_SAY;
+    if (strcmp(name, "status") == 0) return AGENT_ACTION_STATUS;
     if (strcmp(name, "cancel") == 0) return AGENT_ACTION_CANCEL;
     return AGENT_ACTION_INVALID;
 }
@@ -171,6 +172,7 @@ static const char *action_name(agent_action_kind action)
     case AGENT_ACTION_INTERACT: return "interact";
     case AGENT_ACTION_FACE_USER: return "face_user";
     case AGENT_ACTION_SAY: return "say";
+    case AGENT_ACTION_STATUS: return "status";
     case AGENT_ACTION_CANCEL: return "cancel";
     case AGENT_ACTION_INVALID: break;
     }
@@ -345,7 +347,8 @@ bool agent_protocol_parse_request(const char *message, size_t length,
             set_error(error_code, error_code_size, "invalid_target");
             return false;
         }
-    } else if (request->action == AGENT_ACTION_SAY) {
+    } else if (request->action == AGENT_ACTION_SAY ||
+               request->action == AGENT_ACTION_STATUS) {
         allowed = (uint16_t)(allowed | FIELD_TEXT);
         if ((seen & FIELD_TEXT) == 0u || !speech_valid(request->text)) {
             set_error(error_code, error_code_size, "invalid_text");
@@ -526,6 +529,27 @@ bool agent_protocol_generic_error(char *output, size_t output_size,
     return output_finish(&document);
 }
 
+bool agent_protocol_chat_input(char *output, size_t output_size,
+                               const char *session_id,
+                               const char *message_id,
+                               const char *text)
+{
+    json_output document = output_begin(output, output_size);
+    if (!safe_token(session_id) || !safe_token(message_id) ||
+        !speech_valid(text))
+        return false;
+    output_append(&document,
+                  "{\"protocol\":\"kilix.land.chat-input/v1\","
+                  "\"session_id\":");
+    output_string(&document, session_id);
+    output_append(&document, ",\"message_id\":");
+    output_string(&document, message_id);
+    output_append(&document, ",\"text\":");
+    output_string(&document, text);
+    output_append(&document, "}\n");
+    return output_finish(&document);
+}
+
 bool agent_protocol_selftest(void)
 {
     static const char valid[] =
@@ -544,6 +568,7 @@ bool agent_protocol_selftest(void)
         "\"action\":\"face_user\",\"expected_revision\":0,"
         "\"timeout_ms\":1000,\"target_id\":\"plant\"}";
     agent_action_request request;
+    char chat[AGENT_PROTOCOL_MESSAGE_CAPACITY];
     char error[40];
     if (!agent_protocol_parse_request(valid, sizeof valid - 1u, &request,
                                       error, sizeof error) ||
@@ -558,6 +583,11 @@ bool agent_protocol_selftest(void)
     if (agent_protocol_parse_request(extra, sizeof extra - 1u, &request,
                                      error, sizeof error) ||
         strcmp(error, "unexpected_field") != 0)
+        return false;
+    if (!agent_protocol_chat_input(chat, sizeof chat, "session-1",
+                                   "chat-0001", "Where is the radio?") ||
+        strstr(chat, "\"protocol\":\"kilix.land.chat-input/v1\"") == NULL ||
+        strstr(chat, "\"text\":\"Where is the radio?\"") == NULL)
         return false;
     return true;
 }

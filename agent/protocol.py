@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import select
 import socket
 import stat
 import subprocess
@@ -18,15 +19,21 @@ ROOM_BINARY = PROJECT_ROOT / "kilix-land-agent"
 ACTION_PROTOCOL = "kilix.land.action/v1"
 OBSERVE_PROTOCOL = "kilix.land.observe/v1"
 RESULT_PROTOCOL = "kilix.land.action-result/v1"
+CHAT_PROTOCOL = "kilix.land.chat-input/v1"
 MAX_MESSAGE_BYTES = 4096
-MAX_ACTIONS = 64
+MAX_ACTIONS = 4096
+MAX_CHAT_TEXT = 256
 SUPPORTED_ACTIONS = frozenset(
-    {"observe", "go_to", "interact", "face_user", "say", "cancel"}
+    {"observe", "go_to", "interact", "face_user", "say", "status", "cancel"}
 )
 
 
 class ProtocolError(RuntimeError):
     """The trusted room or local transport violated its fixed contract."""
+
+
+class RoomClosed(ProtocolError):
+    """The user closed the graphical room and its private transport."""
 
 
 def _plain_int(value: object) -> bool:
@@ -63,12 +70,16 @@ class RoomRuntime:
     channel: socket.socket
 
     @classmethod
-    def start(cls, *, headless: bool) -> "RoomRuntime":
+    def start(cls, *, headless: bool, chat: bool = False) -> "RoomRuntime":
+        if headless and chat:
+            raise ProtocolError("chat mode requires a graphical room")
         _validate_binary(ROOM_BINARY)
         parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         command = [str(ROOM_BINARY), "--agent-session-fd", str(child.fileno())]
         if headless:
             command.append("--headless")
+        elif chat:
+            command.append("--chat")
         try:
             process = subprocess.Popen(command, cwd=PROJECT_ROOT,
                                        pass_fds=(child.fileno(),))
@@ -121,7 +132,7 @@ class RoomClient:
         if flags & socket.MSG_TRUNC or len(payload) >= MAX_MESSAGE_BYTES:
             raise ProtocolError("the room returned an oversized message")
         if not payload:
-            raise ProtocolError("the room closed the private session")
+            raise RoomClosed("the room closed the private session")
         try:
             document = json.loads(payload)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -208,3 +219,56 @@ class RoomClient:
                 raise ProtocolError("the entity catalog contains a duplicate ID")
             identifiers.add(identifier)
         return document
+
+    def is_closed(self) -> bool:
+        """Return promptly when the authoritative room closed its channel."""
+
+        try:
+            readable, _writable, _exceptional = select.select(
+                [self.channel], [], [], 0
+            )
+            if not readable:
+                return False
+            payload = self.channel.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT)
+            return payload == b""
+        except BlockingIOError:
+            return False
+        except (OSError, ValueError):
+            return True
+
+    def wait_for_chat(self) -> str:
+        """Wait for one bounded user message submitted by the room composer."""
+
+        self.channel.settimeout(None)
+        try:
+            payload, _ancillary, flags, _address = self.channel.recvmsg(
+                MAX_MESSAGE_BYTES, 0
+            )
+        except OSError as error:
+            raise ProtocolError("the room chat transport failed") from error
+        if flags & socket.MSG_TRUNC or len(payload) >= MAX_MESSAGE_BYTES:
+            raise ProtocolError("the room returned an oversized chat message")
+        if not payload:
+            raise RoomClosed("the room closed the private session")
+        try:
+            document = json.loads(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ProtocolError("the room returned invalid chat JSON") from error
+        if not isinstance(document, dict) or set(document) != {
+            "protocol", "session_id", "message_id", "text"
+        }:
+            raise ProtocolError("the room returned a malformed chat message")
+        if document.get("protocol") != CHAT_PROTOCOL:
+            raise ProtocolError("the room returned an unsupported chat protocol")
+        if document.get("session_id") != self.session_id:
+            raise ProtocolError("the room chat message has the wrong session")
+        _safe_token(document.get("message_id"), field="message_id")
+        text = document.get("text")
+        if not isinstance(text, str) or not 1 <= len(text) <= MAX_CHAT_TEXT:
+            raise ProtocolError("chat text must contain 1 to 256 characters")
+        if not all(character.isascii() and 32 <= ord(character) <= 126
+                   for character in text):
+            raise ProtocolError("chat text must be printable ASCII")
+        if not text.strip():
+            raise ProtocolError("chat text cannot be blank")
+        return text
