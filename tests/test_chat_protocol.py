@@ -4,7 +4,7 @@ import json
 import socket
 import unittest
 
-from agent.protocol import CHAT_PROTOCOL, ProtocolError, RoomClient
+from kilix_land_agent.protocol import CHAT_PROTOCOL, ProtocolError, RoomClient
 
 
 class ChatProtocolTests(unittest.TestCase):

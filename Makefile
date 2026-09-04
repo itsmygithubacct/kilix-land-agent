@@ -49,6 +49,7 @@ build:
 test: $(BIN)
 	sha256sum --check assets/graphics/SHA256SUMS
 	sha256sum --check assets/demo/SHA256SUMS
+	python3 tools/check_asset_digest_agreement.py
 	./$(BIN) --selftest
 	./$(BIN) --graphics-test
 	./$(BIN) --observe >/dev/null

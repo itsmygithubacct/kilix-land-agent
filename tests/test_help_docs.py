@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from agent.help_docs import HelpError, HelpLibrary
+from kilix_land_agent.help_docs import HelpError, HelpLibrary
 
 
 class HelpLibraryTests(unittest.TestCase):

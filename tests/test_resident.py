@@ -7,10 +7,10 @@ import tempfile
 import unittest
 from typing import Any
 
-from agent.help_docs import HelpLibrary
-from agent.protocol import RoomClient, RoomClosed, RoomRuntime
-from agent.providers import DeterministicProvider, Proposal
-from agent.resident import (
+from kilix_land_agent.help_docs import HelpLibrary
+from kilix_land_agent.protocol import RoomClient, RoomClosed, RoomRuntime
+from kilix_land_agent.providers import DeterministicProvider, Proposal
+from kilix_land_agent.resident import (
     LocalSpeaker,
     PersistentChatLoop,
     ResidentError,
