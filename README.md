@@ -1,6 +1,6 @@
 # kilix-land-agent
 
-Private, local-first resident-agent development project. Kilix the firekitten
+Local-first resident-agent development project. Kilix the firekitten
 lives in one studio apartment while the semantic control and safety boundaries
 are proven before integration with the larger Kilix Land world.
 
